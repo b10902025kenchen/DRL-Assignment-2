@@ -233,8 +233,27 @@ class Game2048Env(gym.Env):
 
 def get_action(state, score):
     env = Game2048Env()
-    return random.choice([0, 1, 2, 3]) # Choose a random action
+    simulations = 100  # Number of simulations per action
+    best_action = None
+    best_avg_score = -float('inf')
     
-    # You can submit this random agent to evaluate the performance of a purely random strategy.
+    for action in range(4):
+        if not env.is_move_legal(action):
+            continue  # Skip illegal moves
+        
+        total_score = 0
+        for _ in range(simulations):
+            temp_env = copy.deepcopy(env)
+            temp_env.board = state.copy()
+            temp_env.score = score
+            temp_env.step(action)
+            total_score += temp_env.score
+        
+        avg_score = total_score / simulations
+        if avg_score > best_avg_score:
+            best_avg_score = avg_score
+            best_action = action
+    
+    return best_action if best_action is not None else random.choice([0, 1, 2, 3])
 
 
