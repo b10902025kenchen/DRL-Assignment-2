@@ -231,26 +231,51 @@ class Game2048Env(gym.Env):
         # If the simulated board is different from the current board, the move is legal
         return not np.array_equal(self.board, temp_board)
 
+def simulate_random_game(env, max_steps=1000):
+    temp_env = copy.deepcopy(env)
+    steps = 0
+    while not temp_env.is_game_over() and steps < max_steps:
+        legal_actions = [a for a in range(4) if temp_env.is_move_legal(a)]
+        if not legal_actions:
+            break
+        action = random.choice(legal_actions)
+        temp_env.step(action)
+        steps += 1
+    return temp_env.score
+
 def get_action(state, score):
     env = Game2048Env()
-    env.board = state.copy()  # Use the given board state
+    env.board = state.copy()
 
-    best_score = -1
+    actions_to_try = [1, 2, 3]  # down, left, right
+    N = 10  # Number of Monte Carlo simulations per action
+    best_avg_score = -1
     best_action = None
 
-    # Try down (1), left (2), right (3)
-    for action in [1, 2, 3]:
+    for action in actions_to_try:
+        if not env.is_move_legal(action):
+            continue
+
+        # Simulate the action
         temp_env = copy.deepcopy(env)
-        moved = temp_env.step(action)[0]
-        if temp_env.last_move_valid:
-            if temp_env.score > best_score:
-                best_score = temp_env.score
-                best_action = action
+        temp_env.step(action)
+
+        # Run N simulations from the new state
+        total_score = 0
+        for _ in range(N):
+            total_score += simulate_random_game(temp_env)
+
+        avg_score = total_score / N
+
+        if avg_score > best_avg_score:
+            best_avg_score = avg_score
+            best_action = action
 
     if best_action is not None:
         return best_action
     else:
-        return 0  # If no valid action from down, left, right, go up
+        return 0  # If all are illegal, go up
+
 
 
 
