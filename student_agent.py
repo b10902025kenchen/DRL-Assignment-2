@@ -231,7 +231,7 @@ class Game2048Env(gym.Env):
         # If the simulated board is different from the current board, the move is legal
         return not np.array_equal(self.board, temp_board)
 
-def simulate_random_game(env, max_steps=1000):
+def simulate_random_game(env, max_steps=10):
     temp_env = copy.deepcopy(env)
     steps = 0
     while not temp_env.is_game_over() and steps < max_steps:
