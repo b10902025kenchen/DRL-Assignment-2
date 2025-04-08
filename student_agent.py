@@ -231,40 +231,48 @@ class Game2048Env(gym.Env):
         # If the simulated board is different from the current board, the move is legal
         return not np.array_equal(self.board, temp_board)
 
+import numpy as np
+
 def evaluate_board(board):
-    empty_tiles = sum(row.count(0) for row in board)
+    # Ensure board is a NumPy array
+    board = np.array(board)
 
-    max_tile = max(max(row) for row in board)
+    # Count empty tiles (value == 0)
+    empty_tiles = np.count_nonzero(board == 0)
 
-    # Smoothness: penalize large differences between neighbors
+    # Maximum tile
+    max_tile = np.max(board)
+
+    # Smoothness: penalize large differences between adjacent tiles
     smoothness = 0
     for i in range(4):
         for j in range(4):
             if board[i][j] == 0:
                 continue
             if i < 3 and board[i+1][j] != 0:
-                smoothness -= abs(board[i][j] - board[i+1][j])
+                smoothness -= abs(int(board[i][j]) - int(board[i+1][j]))
             if j < 3 and board[i][j+1] != 0:
-                smoothness -= abs(board[i][j] - board[i][j+1])
+                smoothness -= abs(int(board[i][j]) - int(board[i][j+1]))
 
-    # Monotonicity: reward rows/columns with values increasing or decreasing
+    # Monotonicity: reward sorted rows and columns
     monotonicity = 0
     for row in board:
         for i in range(3):
-            if row[i] > row[i+1]:
+            if row[i] >= row[i+1]:
                 monotonicity += 1
-    for col in zip(*board):
+    for col in board.T:
         for i in range(3):
-            if col[i] > col[i+1]:
+            if col[i] >= col[i+1]:
                 monotonicity += 1
 
-    # Weighted sum of all factors
+    # Combine evaluation factors
     return (
-        2.5 * empty_tiles + 
-        1.0 * max_tile + 
-        0.1 * monotonicity + 
+        2.5 * empty_tiles +
+        1.0 * max_tile +
+        0.1 * monotonicity +
         0.01 * smoothness
     )
+
 
 def simulate_random_game(env, max_steps=3):
     temp_env = copy.deepcopy(env)
