@@ -245,36 +245,29 @@ def simulate_random_game(env, max_steps=10):
 
 def get_action(state, score):
     env = Game2048Env()
-    env.board = state.copy()
+    env.board = state.copy()  # Use the given board state
 
-    actions_to_try = [1, 2, 3]  # down, left, right
-    N = 10  # Number of Monte Carlo simulations per action
-    best_avg_score = -1
+    # First, try down
+    temp_env_down = copy.deepcopy(env)
+    temp_env_down.step(1)
+    if temp_env_down.last_move_valid:
+        return 1
+
+    # Try left and right, pick the one with best score
+    best_score = -1
     best_action = None
-
-    for action in actions_to_try:
-        if not env.is_move_legal(action):
-            continue
-
-        # Simulate the action
+    for action in [2, 3]:  # left, right
         temp_env = copy.deepcopy(env)
         temp_env.step(action)
-
-        # Run N simulations from the new state
-        total_score = 0
-        for _ in range(N):
-            total_score += simulate_random_game(temp_env)
-
-        avg_score = total_score / N
-
-        if avg_score > best_avg_score:
-            best_avg_score = avg_score
+        if temp_env.last_move_valid and temp_env.score > best_score:
+            best_score = temp_env.score
             best_action = action
 
     if best_action is not None:
         return best_action
     else:
-        return 0  # If all are illegal, go up
+        return 0  # If no valid action from down, left, right, go up
+
 
 
 
