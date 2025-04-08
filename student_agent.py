@@ -267,14 +267,14 @@ def evaluate_board(board):
 
     # Combine evaluation factors
     return (
-        0 * empty_tiles +
+        1 * empty_tiles +
         0 * max_tile +
         0 * monotonicity +
-        1 * smoothness
+        0 * smoothness
     )
 
 
-def simulate_random_game(env, max_steps=3):
+def simulate_random_game(env, max_steps=1):
     temp_env = copy.deepcopy(env)
     steps = 0
     while not temp_env.is_game_over() and steps < max_steps:
@@ -291,7 +291,7 @@ def get_action(state, score):
     env.board = state.copy()
 
     actions_to_try = [0, 1, 2, 3]  # up, down, left, right
-    N = 10  # Monte Carlo simulations per action
+    N = 100  # Monte Carlo simulations per action
     best_avg_eval = -float("inf")
     best_action = None
 
