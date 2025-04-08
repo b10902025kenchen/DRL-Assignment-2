@@ -274,7 +274,7 @@ def evaluate_board(board):
     )
 
 
-def simulate_random_game(env, max_steps=5):
+def simulate_random_game(env, max_steps=3):
     temp_env = copy.deepcopy(env)
     steps = 0
     while not temp_env.is_game_over() and steps < max_steps:
