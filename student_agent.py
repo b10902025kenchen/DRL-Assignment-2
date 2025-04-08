@@ -231,6 +231,41 @@ class Game2048Env(gym.Env):
         # If the simulated board is different from the current board, the move is legal
         return not np.array_equal(self.board, temp_board)
 
+def evaluate_board(board):
+    empty_tiles = sum(row.count(0) for row in board)
+
+    max_tile = max(max(row) for row in board)
+
+    # Smoothness: penalize large differences between neighbors
+    smoothness = 0
+    for i in range(4):
+        for j in range(4):
+            if board[i][j] == 0:
+                continue
+            if i < 3 and board[i+1][j] != 0:
+                smoothness -= abs(board[i][j] - board[i+1][j])
+            if j < 3 and board[i][j+1] != 0:
+                smoothness -= abs(board[i][j] - board[i][j+1])
+
+    # Monotonicity: reward rows/columns with values increasing or decreasing
+    monotonicity = 0
+    for row in board:
+        for i in range(3):
+            if row[i] > row[i+1]:
+                monotonicity += 1
+    for col in zip(*board):
+        for i in range(3):
+            if col[i] > col[i+1]:
+                monotonicity += 1
+
+    # Weighted sum of all factors
+    return (
+        2.5 * empty_tiles + 
+        1.0 * max_tile + 
+        0.1 * monotonicity + 
+        0.01 * smoothness
+    )
+
 def simulate_random_game(env, max_steps=10):
     temp_env = copy.deepcopy(env)
     steps = 0
@@ -241,37 +276,36 @@ def simulate_random_game(env, max_steps=10):
         action = random.choice(legal_actions)
         temp_env.step(action)
         steps += 1
-    return temp_env.score
+    return evaluate_board(temp_env.board)
 
 def get_action(state, score):
     env = Game2048Env()
     env.board = state.copy()
 
-    actions_to_try = [0, 1, 2, 3]  # down, left, right
-    N = 10  # Number of Monte Carlo simulations per action
-    best_avg_score = -1
+    actions_to_try = [0, 1, 2, 3]  # up, down, left, right
+    N = 10  # Monte Carlo simulations per action
+    best_avg_eval = -float("inf")
     best_action = None
 
     for action in actions_to_try:
         if not env.is_move_legal(action):
             continue
 
-        # Simulate the action
         temp_env = copy.deepcopy(env)
         temp_env.step(action)
 
-        # Run N simulations from the new state
-        total_score = 0
+        total_eval = 0
         for _ in range(N):
-            total_score += simulate_random_game(temp_env)
+            total_eval += simulate_random_game(temp_env)
 
-        avg_score = total_score / N
+        avg_eval = total_eval / N
 
-        if avg_score > best_avg_score:
-            best_avg_score = avg_score
+        if avg_eval > best_avg_eval:
+            best_avg_eval = avg_eval
             best_action = action
 
     return best_action
+
 
 
 
