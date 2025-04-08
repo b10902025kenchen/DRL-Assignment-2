@@ -267,10 +267,10 @@ def evaluate_board(board):
 
     # Combine evaluation factors
     return (
-        2.5 * empty_tiles +
-        1.0 * max_tile +
-        0.1 * monotonicity +
-        0.01 * smoothness
+        1 * empty_tiles +
+        0 * max_tile +
+        0 * monotonicity +
+        0 * smoothness
     )
 
 
