@@ -269,8 +269,8 @@ def evaluate_board(board):
     return (
         0 * empty_tiles +
         0 * max_tile +
-        1 * monotonicity +
-        0 * smoothness
+        0 * monotonicity +
+        1 * smoothness
     )
 
 
