@@ -237,6 +237,9 @@ def evaluate_board(board):
 
     # Base reward: more empty tiles = more room to play
     empty_tiles = np.count_nonzero(board == 0)
+
+    return empty_tiles
+
     base_score = 1 * empty_tiles
 
     # Future move simulation
