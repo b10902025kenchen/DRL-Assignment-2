@@ -240,41 +240,14 @@ def evaluate_board(board):
     # Count empty tiles (value == 0)
     empty_tiles = np.count_nonzero(board == 0)
 
-    # Maximum tile
-    max_tile = np.max(board)
-
-    # Smoothness: penalize large differences between adjacent tiles
-    smoothness = 0
-    for i in range(4):
-        for j in range(4):
-            if board[i][j] == 0:
-                continue
-            if i < 3 and board[i+1][j] != 0:
-                smoothness -= abs(int(board[i][j]) - int(board[i+1][j]))
-            if j < 3 and board[i][j+1] != 0:
-                smoothness -= abs(int(board[i][j]) - int(board[i][j+1]))
-
-    # Monotonicity: reward sorted rows and columns
-    monotonicity = 0
-    for row in board:
-        for i in range(3):
-            if row[i] >= row[i+1]:
-                monotonicity += 1
-    for col in board.T:
-        for i in range(3):
-            if col[i] >= col[i+1]:
-                monotonicity += 1
 
     # Combine evaluation factors
     return (
-        1 * empty_tiles +
-        0 * max_tile +
-        0 * monotonicity +
-        0 * smoothness
+        1 * empty_tiles 
     )
 
 
-def simulate_random_game(env, max_steps=1):
+def simulate_random_game(env, max_steps=3):
     temp_env = copy.deepcopy(env)
     steps = 0
     while not temp_env.is_game_over() and steps < max_steps:
@@ -290,15 +263,18 @@ def get_action(state, score):
     env = Game2048Env()
     env.board = state.copy()
 
-    actions_to_try = [0, 1, 2, 3]  # up, down, left, right
-    N = 100  # Monte Carlo simulations per action
+    preferred_actions = [1, 2, 3]  # down, left, right
+    fallback_action = 0  # up
+    N = 10  # Monte Carlo simulations per action
     best_avg_eval = -float("inf")
     best_action = None
 
-    for action in actions_to_try:
+    found_legal = False
+    for action in preferred_actions:
         if not env.is_move_legal(action):
             continue
 
+        found_legal = True
         temp_env = copy.deepcopy(env)
         temp_env.step(action)
 
@@ -312,7 +288,11 @@ def get_action(state, score):
             best_avg_eval = avg_eval
             best_action = action
 
-    return best_action
+    if found_legal:
+        return best_action
+    else:
+        return fallback_action  # Move up if no preferred actions are legal
+
 
 
 
