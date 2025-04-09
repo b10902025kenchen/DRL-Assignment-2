@@ -235,21 +235,39 @@ class Game2048Env(gym.Env):
 def evaluate_board(board):
     board = np.array(board)
 
+    # Base reward: more empty tiles = more room to play
     empty_tiles = np.count_nonzero(board == 0)
+    base_score = 1 * empty_tiles
 
-    # Penalty for moving high-value tiles
-    move_penalty = 0
-    for i in range(board.shape[0]):
-        for j in range(board.shape[1]):
-            value = board[i, j]
-            if value >= 8:
-                # Check if the tile can be merged with a neighbor (i.e., less likely to want to move)
-                for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
-                    ni, nj = i + dx, j + dy
-                    if 0 <= ni < 4 and 0 <= nj < 4 and board[ni, nj] == value:
-                        move_penalty += value  # penalty if move is likely to shift valuable tiles
+    # Future move simulation
+    env = Game2048Env()
+    env.board = board.copy()
+    N = 10  # number of simulations
+    scoring_moves = 0
+    total_legal_moves = 0
 
-    return 1 * empty_tiles - move_penalty
+    for _ in range(N):
+        temp_env = copy.deepcopy(env)
+        prev_score = temp_env.score
+        steps = 0
+        while not temp_env.is_game_over() and steps < 3:
+            legal_actions = [a for a in range(4) if temp_env.is_move_legal(a)]
+            total_legal_moves += len(legal_actions)
+            if not legal_actions:
+                break
+            action = random.choice(legal_actions)
+            temp_env.step(action)
+            steps += 1
+        if temp_env.score > prev_score:
+            scoring_moves += 1
+
+    # Combine evaluation
+    reward = (
+        100 * scoring_moves     # major reward for score-making simulations
+        + 0.5 * total_legal_moves # small reward for having more options
+    )
+    return reward
+
 
 
 
