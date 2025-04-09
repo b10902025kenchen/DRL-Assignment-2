@@ -231,20 +231,26 @@ class Game2048Env(gym.Env):
         # If the simulated board is different from the current board, the move is legal
         return not np.array_equal(self.board, temp_board)
 
-import numpy as np
 
 def evaluate_board(board):
-    # Ensure board is a NumPy array
     board = np.array(board)
 
-    # Count empty tiles (value == 0)
     empty_tiles = np.count_nonzero(board == 0)
 
+    # Penalty for moving high-value tiles
+    move_penalty = 0
+    for i in range(board.shape[0]):
+        for j in range(board.shape[1]):
+            value = board[i, j]
+            if value >= 8:
+                # Check if the tile can be merged with a neighbor (i.e., less likely to want to move)
+                for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
+                    ni, nj = i + dx, j + dy
+                    if 0 <= ni < 4 and 0 <= nj < 4 and board[ni, nj] == value:
+                        move_penalty += value  # penalty if move is likely to shift valuable tiles
 
-    # Combine evaluation factors
-    return (
-        1 * empty_tiles 
-    )
+    return 1 * empty_tiles - move_penalty
+
 
 
 def simulate_random_game(env, max_steps=3):
@@ -263,18 +269,15 @@ def get_action(state, score):
     env = Game2048Env()
     env.board = state.copy()
 
-    preferred_actions = [1, 2, 3]  # down, left, right
-    fallback_action = 0  # up
+    actions_to_try = [0, 1, 2, 3]  # up, down, left, right
     N = 10  # Monte Carlo simulations per action
     best_avg_eval = -float("inf")
     best_action = None
 
-    found_legal = False
-    for action in preferred_actions:
+    for action in actions_to_try:
         if not env.is_move_legal(action):
             continue
 
-        found_legal = True
         temp_env = copy.deepcopy(env)
         temp_env.step(action)
 
@@ -288,11 +291,7 @@ def get_action(state, score):
             best_avg_eval = avg_eval
             best_action = action
 
-    if found_legal:
-        return best_action
-    else:
-        return fallback_action  # Move up if no preferred actions are legal
-
+    return best_action
 
 
 
