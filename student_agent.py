@@ -232,45 +232,90 @@ class Game2048Env(gym.Env):
         return not np.array_equal(self.board, temp_board)
 
 
+# def evaluate_board(board):
+#     board = np.array(board)
+
+#     # Base reward: more empty tiles = more room to play
+#     empty_tiles = np.count_nonzero(board == 0)
+
+#     return empty_tiles
+
+#     base_score = 1 * empty_tiles
+
+#     # Future move simulation
+#     env = Game2048Env()
+#     env.board = board.copy()
+#     N = 10  # number of simulations
+#     scoring_moves = 0
+#     total_legal_moves = 0
+
+#     for _ in range(N):
+#         temp_env = copy.deepcopy(env)
+#         prev_score = temp_env.score
+#         steps = 0
+#         while not temp_env.is_game_over() and steps < 3:
+#             legal_actions = [a for a in range(4) if temp_env.is_move_legal(a)]
+#             total_legal_moves += len(legal_actions)
+#             if not legal_actions:
+#                 break
+#             action = random.choice(legal_actions)
+#             temp_env.step(action)
+#             steps += 1
+#         if temp_env.score > prev_score:
+#             scoring_moves += 1
+
+#     # Combine evaluation
+#     reward = (
+#         100 * scoring_moves     # major reward for score-making simulations
+#         + 0.5 * total_legal_moves # small reward for having more options
+#     )
+#     return reward
+
+class NTupleEvaluator:
+    def __init__(self):
+        self.lut = defaultdict(float)
+        self.tuples = self._generate_tuples()
+
+    def _generate_tuples(self):
+        # Select fixed patterns: rows and columns
+        patterns = []
+        for i in range(4):
+            # Horizontal rows
+            patterns.append([(i, 0), (i, 1), (i, 2), (i, 3)])
+            # Vertical columns
+            patterns.append([(0, i), (1, i), (2, i), (3, i)])
+        # Optional: diagonals
+        patterns.append([(0, 0), (1, 1), (2, 2), (3, 3)])
+        patterns.append([(0, 3), (1, 2), (2, 1), (3, 0)])
+        return patterns
+
+    def board_to_tuple_index(self, board, positions):
+        # Convert tile values to log2 to reduce LUT size
+        index = []
+        for (i, j) in positions:
+            val = board[i, j]
+            index.append(int(math.log2(val)) if val != 0 else 0)
+        return tuple(index)
+
+    def evaluate(self, board):
+        total = 0.0
+        for pattern in self.tuples:
+            idx = self.board_to_tuple_index(board, pattern)
+            total += self.lut[idx]
+        return total
+
+    def update(self, board, delta):
+        # Used in training: update values in LUT
+        for pattern in self.tuples:
+            idx = self.board_to_tuple_index(board, pattern)
+            self.lut[idx] += delta
+
+# Instantiate once globally or pass as parameter
+evaluator = NTupleEvaluator()
+
+# Replace your evaluate_board function with this:
 def evaluate_board(board):
-    board = np.array(board)
-
-    # Base reward: more empty tiles = more room to play
-    empty_tiles = np.count_nonzero(board == 0)
-
-    return empty_tiles
-
-    base_score = 1 * empty_tiles
-
-    # Future move simulation
-    env = Game2048Env()
-    env.board = board.copy()
-    N = 10  # number of simulations
-    scoring_moves = 0
-    total_legal_moves = 0
-
-    for _ in range(N):
-        temp_env = copy.deepcopy(env)
-        prev_score = temp_env.score
-        steps = 0
-        while not temp_env.is_game_over() and steps < 3:
-            legal_actions = [a for a in range(4) if temp_env.is_move_legal(a)]
-            total_legal_moves += len(legal_actions)
-            if not legal_actions:
-                break
-            action = random.choice(legal_actions)
-            temp_env.step(action)
-            steps += 1
-        if temp_env.score > prev_score:
-            scoring_moves += 1
-
-    # Combine evaluation
-    reward = (
-        100 * scoring_moves     # major reward for score-making simulations
-        + 0.5 * total_legal_moves # small reward for having more options
-    )
-    return reward
-
+    return evaluator.evaluate(np.array(board))
 
 
 
