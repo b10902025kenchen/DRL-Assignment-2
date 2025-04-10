@@ -294,71 +294,61 @@ class MCTSNode:
 
     def best_child(self, c_puct=1.0):
         best_score = -float("inf")
-        best_action = None
         best_node = None
         for action, child in self.children.items():
             if child.visits == 0:
-                score = float("inf")
+                ucb_score = float("inf")
             else:
                 exploit = child.value_sum / child.visits
-                explore = c_puct * math.sqrt(math.log(self.visits + 1) / (child.visits))
-                score = exploit + explore
-            if score > best_score:
-                best_score = score
-                best_action = action
+                explore = c_puct * math.sqrt(math.log(self.visits + 1) / child.visits)
+                ucb_score = exploit + explore
+            if ucb_score > best_score:
+                best_score = ucb_score
                 best_node = child
-        return best_action, best_node
+        return best_node
 
     def expand(self):
         action = self.untried_actions.pop()
-        next_env = copy.deepcopy(self.env)
-        next_env.step(action)
-        child_node = MCTSNode(next_env, parent=self, action=action)
+        new_env = copy.deepcopy(self.env)
+        new_env.step(action)
+        child_node = MCTSNode(new_env, parent=self, action=action)
         self.children[action] = child_node
         return child_node
 
-    def backup(self, value):
+    def backpropagate(self, value):
         self.visits += 1
         self.value_sum += value
         if self.parent:
-            self.parent.backup(value)
+            self.parent.backpropagate(value)
 
-def simulate_random_game(env, max_depth=5):
-    temp_env = copy.deepcopy(env)
-    steps = 0
-    while not temp_env.is_game_over() and steps < max_depth:
-        legal_actions = [a for a in range(4) if temp_env.is_move_legal(a)]
-        if not legal_actions:
-            break
-        action = random.choice(legal_actions)
-        temp_env.step(action)
-        steps += 1
-    return evaluate_board(temp_env.board)
+    def is_terminal_node(self):
+        return self.env.is_game_over()
 
-def mcts_search(root_env, simulations=100, max_depth=5):
-    root = MCTSNode(root_env)
-    for _ in range(simulations):
-        node = root
-        depth = 0
 
-        # SELECTION
-        while not node.env.is_game_over() and node.is_fully_expanded() and depth < max_depth:
-            _, node = node.best_child()
-            depth += 1
+def mcts_search(root_env, num_simulations=100):
+    root_node = MCTSNode(copy.deepcopy(root_env))
 
-        # EXPANSION
-        if not node.env.is_game_over() and not node.is_fully_expanded():
+    for _ in range(num_simulations):
+        node = root_node
+
+        # Selection
+        while not node.is_terminal_node() and node.is_fully_expanded():
+            node = node.best_child()
+
+        # Expansion
+        if not node.is_terminal_node() and not node.is_fully_expanded():
             node = node.expand()
 
-        # SIMULATION
-        value = simulate_random_game(node.env, max_depth - depth)
+        # Simulation
+        simulation_result = evaluate_board(node.env.board)
 
-        # BACKPROPAGATION
-        node.backup(value)
+        # Backpropagation
+        node.backpropagate(simulation_result)
 
-    # SELECT BEST ACTION
-    best_action = max(root.children.items(), key=lambda item: item[1].visits)[0]
+    # Choose the action with the most visits
+    best_action = max(root_node.children.items(), key=lambda item: item[1].visits)[0]
     return best_action
+
 
 def get_action(state, score):
     env = Game2048Env()
