@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import copy
 import random
 import math
+import os 
+from collections import defaultdict 
 
 
 class Game2048Env(gym.Env):
@@ -231,177 +233,195 @@ class Game2048Env(gym.Env):
         # If the simulated board is different from the current board, the move is legal
         return not np.array_equal(self.board, temp_board)
 
+class NTupleLUT:
+    def __init__(self, board_dim, tuple_patterns):
+        self.board_dim = board_dim
+        self.patterns = tuple_patterns
+        self.lut_weights = [defaultdict(float) for _ in self.patterns]
+        self.pattern_symmetries = [self._generate_symmetries(p) for p in self.patterns]
 
-# def evaluate_board(board):
-#     board = np.array(board)
+        try:
+            self._load_weights()
+            print("LUTs loaded from file.")
+        except Exception:
+            print("Failed to load LUTs. Initialized with empty weights.")
 
-#     # Base reward: more empty tiles = more room to play
-#     empty_tiles = np.count_nonzero(board == 0)
+    def _generate_symmetries(self, pattern):
+        """
+        Generate all symmetric variants (rotations and flips) of the given pattern.
+        """
+        all_variants = set()
+        coords = np.array(pattern)
 
-#     return empty_tiles
+        for _ in range(4):  # Four 90-degree rotations
+            coords = np.array([(y, self.board_dim - 1 - x) for x, y in coords])
+            all_variants.add(tuple(map(tuple, coords)))
 
-#     base_score = 1 * empty_tiles
+        # Horizontal flip
+        h_flip = tuple((x, self.board_dim - 1 - y) for x, y in pattern)
+        all_variants.add(h_flip)
 
-#     # Future move simulation
-#     env = Game2048Env()
-#     env.board = board.copy()
-#     N = 10  # number of simulations
-#     scoring_moves = 0
-#     total_legal_moves = 0
+        # Vertical flip
+        v_flip = tuple((self.board_dim - 1 - x, y) for x, y in pattern)
+        all_variants.add(v_flip)
 
-#     for _ in range(N):
-#         temp_env = copy.deepcopy(env)
-#         prev_score = temp_env.score
-#         steps = 0
-#         while not temp_env.is_game_over() and steps < 3:
-#             legal_actions = [a for a in range(4) if temp_env.is_move_legal(a)]
-#             total_legal_moves += len(legal_actions)
-#             if not legal_actions:
-#                 break
-#             action = random.choice(legal_actions)
-#             temp_env.step(action)
-#             steps += 1
-#         if temp_env.score > prev_score:
-#             scoring_moves += 1
+        # Combined transforms
+        h_rot = [(x, self.board_dim - 1 - y) for x, y in pattern]
+        coords = np.array([(y, self.board_dim - 1 - x) for x, y in h_rot])
+        all_variants.add(tuple(map(tuple, coords)))
 
-#     # Combine evaluation
-#     reward = (
-#         100 * scoring_moves     # major reward for score-making simulations
-#         + 0.5 * total_legal_moves # small reward for having more options
-#     )
-#     return reward
+        v_rot = [(self.board_dim - 1 - x, y) for x, y in pattern]
+        coords = np.array([(y, self.board_dim - 1 - x) for x, y in v_rot])
+        all_variants.add(tuple(map(tuple, coords)))
 
-class NTupleEvaluator:
-    def __init__(self):
-        self.lut = defaultdict(float)
-        self.tuples = self._generate_tuples()
+        return list(all_variants)
 
-    def _generate_tuples(self):
-        # Select fixed patterns: rows and columns
-        patterns = []
-        for i in range(4):
-            # Horizontal rows
-            patterns.append([(i, 0), (i, 1), (i, 2), (i, 3)])
-            # Vertical columns
-            patterns.append([(0, i), (1, i), (2, i), (3, i)])
-        # Optional: diagonals
-        patterns.append([(0, 0), (1, 1), (2, 2), (3, 3)])
-        patterns.append([(0, 3), (1, 2), (2, 1), (3, 0)])
-        return patterns
+    def _tile_index(self, value):
+        """
+        Maps a tile value to an index for lookup.
+        """
+        return 0 if value == 0 else int(math.log(value, 2))
 
-    def board_to_tuple_index(self, board, positions):
-        # Convert tile values to log2 to reduce LUT size
-        index = []
-        for (i, j) in positions:
-            val = board[i, j]
-            index.append(int(math.log2(val)) if val != 0 else 0)
-        return tuple(index)
+    def _extract_feature(self, board, pattern_coords):
+        """
+        Generate feature vector from board using tile indices at given pattern.
+        """
+        return tuple(self._tile_index(board[y, x]) for x, y in pattern_coords)
 
     def evaluate(self, board):
+        """
+        Estimate value of a board state using n-tuple patterns and symmetries.
+        """
         total = 0.0
-        for pattern in self.tuples:
-            idx = self.board_to_tuple_index(board, pattern)
-            total += self.lut[idx]
+        for i, sym_list in enumerate(self.pattern_symmetries):
+            for sym in sym_list:
+                feature = self._extract_feature(board, sym)
+                total += self.lut_weights[i][feature]
         return total
 
-    def update(self, board, delta):
-        # Used in training: update values in LUT
-        for pattern in self.tuples:
-            idx = self.board_to_tuple_index(board, pattern)
-            self.lut[idx] += delta
+    def update_weights(self, board, td_error, learning_rate):
+        """
+        Perform TD update for all symmetric features of current board.
+        """
+        for i, sym_list in enumerate(self.pattern_symmetries):
+            for sym in sym_list:
+                feature = self._extract_feature(board, sym)
+                self.lut_weights[i][feature] += learning_rate * td_error
 
-# Instantiate once globally or pass as parameter
-evaluator = NTupleEvaluator()
+    def save_weights(self, filename="ntuple_luts.pkl"):
+        try:
+            serializable = [dict(weights) for weights in self.lut_weights]
+            with open(filename, 'wb') as file:
+                pickle.dump(serializable, file)
+            print(f"Weights saved to {filename}")
+        except Exception as err:
+            print(f"Failed to save LUTs: {err}")
 
-# Replace your evaluate_board function with this:
-def evaluate_board(board):
-    return evaluator.evaluate(np.array(board))
+    def _load_weights(self, filename="ntuple_luts.pkl"):
+        if os.path.exists(filename):
+            with open(filename, 'rb') as file:
+                loaded = pickle.load(file)
+            self.lut_weights = []
+            for weights in loaded:
+                d = defaultdict(float)
+                d.update(weights)
+                self.lut_weights.append(d)
+        else:
+            raise FileNotFoundError
 
+def best_action(env, approximator):
+    possible_moves = [a for a in range(4) if env.is_move_legal(a)]
+    if not possible_moves:
+        return None, 0
 
+    original_board = env.board.copy()
+    original_score = env.score
 
-import copy
-import math
-import random
-from collections import defaultdict
+    best_score = -float('inf')
+    best_move = None
 
-class MCTSNode:
-    def __init__(self, env, parent=None, action=None):
-        self.env = env
-        self.parent = parent
-        self.action = action
-        self.children = {}
-        self.visits = 0
-        self.value_sum = 0.0
-        self.untried_actions = [a for a in range(4) if env.is_move_legal(a)]
+    for move in possible_moves:
+        _, move_score, _, afterstate = env.step(move)
+        score_delta = move_score - original_score
+        value = score_delta + approximator.evaluate(afterstate)
+        if value > best_score:
+            best_score = value
+            best_move = move
 
-    def is_fully_expanded(self):
-        return len(self.untried_actions) == 0
+        env.board = original_board.copy()
+        env.score = original_score
 
-    def best_child(self, c_puct=1.0):
-        best_score = -float("inf")
-        best_node = None
-        for action, child in self.children.items():
-            if child.visits == 0:
-                ucb_score = float("inf")
-            else:
-                exploit = child.value_sum / child.visits
-                explore = c_puct * math.sqrt(math.log(self.visits + 1) / child.visits)
-                ucb_score = exploit + explore
-            if ucb_score > best_score:
-                best_score = ucb_score
-                best_node = child
-        return best_node
-
-    def expand(self):
-        action = self.untried_actions.pop()
-        new_env = copy.deepcopy(self.env)
-        new_env.step(action)
-        child_node = MCTSNode(new_env, parent=self, action=action)
-        self.children[action] = child_node
-        return child_node
-
-    def backpropagate(self, value):
-        self.visits += 1
-        self.value_sum += value
-        if self.parent:
-            self.parent.backpropagate(value)
-
-    def is_terminal_node(self):
-        return self.env.is_game_over()
+    return best_move, best_score
 
 
-def mcts_search(root_env, num_simulations=100):
-    root_node = MCTSNode(copy.deepcopy(root_env))
+def expected_value(afterstate, approximator):
+    """
+    Simulate all possible tile insertions and compute expected value.
+    Takes into account the number of empty tiles.
+    """
+    total_value = 0
+    empty_count = 0
+    simulator = Game2048Env()
+    simulator.board = afterstate.copy()
 
-    for _ in range(num_simulations):
-        node = root_node
+    # Count empty tiles and calculate potential value from them
+    for i in range(4):
+        for j in range(4):
+            if simulator.board[i][j] == 0:
+                empty_count += 1
 
-        # Selection
-        while not node.is_terminal_node() and node.is_fully_expanded():
-            node = node.best_child()
+                # Try inserting 2 and calculate the resulting value
+                simulator.board[i][j] = 2
+                _, score_2 = best_action(simulator, approximator)
+                total_value += 0.9 * score_2  # Weight 2 tiles more
 
-        # Expansion
-        if not node.is_terminal_node() and not node.is_fully_expanded():
-            node = node.expand()
+                # Try inserting 4 and calculate the resulting value
+                simulator.board[i][j] = 4
+                _, score_4 = best_action(simulator, approximator)
+                total_value += 0.1 * score_4  # Weight 4 tiles less
 
-        # Simulation
-        simulation_result = evaluate_board(node.env.board)
+                # Reset the tile after simulation
+                simulator.board[i][j] = 0
 
-        # Backpropagation
-        node.backpropagate(simulation_result)
-
-    # Choose the action with the most visits
-    best_action = max(root_node.children.items(), key=lambda item: item[1].visits)[0]
-    return best_action
+    # Return the average value adjusted for the number of empty tiles
+    # Higher empty_count implies more room for future moves, so this is factored in
+    return (total_value / empty_count) if empty_count else 0
 
 
-def get_action(state, score):
+
+def run_training(env, approximator, episodes=5):
+    scores = []
+
+    for ep in range(episodes):
+        env.reset()
+        done = False
+
+        while not done:
+            action = best_action(env, approximator)
+            _, _, done, _ = env.step(action)
+
+        print(f"Episode {ep + 1} finished. Score: {env.score}")
+        scores.append(env.score)
+
+    avg_score = sum(scores) / len(scores)
+    print("Average Score:", avg_score)
+    return scores
+
+
+# Define board patterns
+tuple_patterns = [
+    ((0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)),
+    ((0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (3, 0)),
+    ((0, 1), (0, 2), (1, 1), (1, 2), (2, 1), (2, 2)),
+    ((0, 1), (0, 2), (1, 1), (1, 2), (2, 1), (3, 1)),
+]
+
+# Create LUT approximator
+approximator = NTupleLUT(board_dim=4, tuple_patterns=tuple_patterns)
+
+
+def get_action(board_state, current_score):
     env = Game2048Env()
-    env.board = state.copy()
-    return mcts_search(env, simulations=100, max_depth=5)
-
-
-
-
-
-
+    env.board = board_state
+    env.score = current_score
+    return best_action(env, approximator)
